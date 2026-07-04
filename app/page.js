@@ -9,10 +9,37 @@ export default function Home() {
 
   useEffect(() => {
     async function fetchData() {
+      // 1. Try public GitHub API (instant, bypasses Varnish cache)
       try {
-        // Fetch raw JSON from GitHub for instant live updates
+        const apiUrl = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/public/data.json?t=${Date.now()}`;
+        const res = await fetch(apiUrl, {
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const decodedContent = decodeURIComponent(escape(atob(json.content)));
+          const parsedData = JSON.parse(decodedContent);
+          setData(parsedData);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("GitHub API fetch failed/rate-limited, trying raw content:", err);
+      }
+
+      // 2. Try raw GitHub URL (fallback)
+      try {
         const githubUrl = `https://raw.githubusercontent.com/${GITHUB_USERNAME}/${GITHUB_REPO}/main/public/data.json?t=${Date.now()}`;
-        const res = await fetch(githubUrl);
+        const res = await fetch(githubUrl, {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
         if (res.ok) {
           const json = await res.json();
           setData(json);
@@ -20,12 +47,12 @@ export default function Home() {
           return;
         }
       } catch (err) {
-        console.warn("GitHub live raw fetch failed, falling back to local file:", err);
+        console.warn("GitHub raw fetch failed, trying local file:", err);
       }
 
+      // 3. Try local file (build fallback)
       try {
-        // Fallback to local build data.json
-        const localRes = await fetch('/data.json');
+        const localRes = await fetch(`/data.json?t=${Date.now()}`);
         if (localRes.ok) {
           const json = await localRes.json();
           setData(json);
